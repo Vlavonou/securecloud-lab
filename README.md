@@ -84,13 +84,13 @@ curl -X POST http://localhost/api/payment \
 
 ### Zero Trust Network
 - Bastion Host comme seul point d'entrée SSH
-- Serveur App dans subnet privé — jamais accessible directement depuis Internet
+- Serveur App dans subnet privé jamais accessible directement depuis Internet
 - Security Groups avec principe du moindre privilège
 
 ### IAM
-- Compte Root protégé — jamais utilisé au quotidien
+- Compte Root protégé jamais utilisé au quotidien
 - Utilisateurs séparés : admin, deployer, auditor
-- Rôle IAM attaché aux EC2 — pas de clés stockées sur les serveurs
+- Rôle IAM attaché aux EC2 pas de clés stockées sur les serveurs
 
 ### Hardening Linux
 - SSH : clés uniquement, root désactivé, Fail2Ban actif
@@ -103,11 +103,11 @@ curl -X POST http://localhost/api/payment \
 - La séparation réseau via subnets public/privé est plus robuste qu'un simple Security Group
 - Les IAM Roles sur EC2 évitent de stocker des credentials sur les serveurs
 - Le subnet privé sans accès Internet nécessite un NAT Gateway ou une solution alternative pour installer des paquets
-- Terraform permet de documenter l'infrastructure comme du code — reproductible en une commande
+- Terraform permet de documenter l'infrastructure comme du code reproductible en une commande
 
 ## Adaptation Oracle Cloud
 
-Le document original prévoyait Oracle Cloud Always Free pour le serveur applicatif. Suite à des contraintes de carte bancaire, le serveur App a été déployé sur une deuxième instance EC2 t3.micro dans le subnet privé. Toutes les compétences techniques sont identiques — seul le fournisseur cloud change.
+Le document original prévoyait Oracle Cloud Always Free pour le serveur applicatif. Suite à des contraintes de carte bancaire, le serveur App a été déployé sur une deuxième instance EC2 t3.micro dans le subnet privé. Toutes les compétences techniques sont identiques seul le fournisseur cloud change.
 
 ## Portfolio
 
@@ -116,5 +116,5 @@ Le document original prévoyait Oracle Cloud Always Free pour le serveur applica
 ## Auteur
 
 **Senghor Padraic VLAVONOU**  
-Licence en Sécurité Informatique — IFRI, Bénin  
+Licence en Sécurité Informatique IFRI, Bénin  
 Junior Cloud / DevOps / Security Engineer
