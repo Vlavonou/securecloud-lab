@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  app:
+    build: ./app
+    container_name: payflow-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:alpine
+    container_name: payflow-nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - internal
+    depends_on:
+      - app
+
+networks:
+  internal:
+    driver: bridge
+    internal: false

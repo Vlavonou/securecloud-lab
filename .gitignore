@@ -1,0 +1,25 @@
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/*.tfstate
+terraform/*.tfstate.*
+
+# Clés SSH
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# AWS credentials
+.aws/
+credentials
+
+# Variables d'environnement
+.env
+*.env
+
+# Fichiers système
+.DS_Store
+Thumbs.db
