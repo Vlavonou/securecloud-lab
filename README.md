@@ -61,35 +61,47 @@ Le projet prévoyait initialement de répartir la charge entre AWS (réseau, bas
 ## Architecture
 
 ```
-Internet → Cloudflare (WAF/DNS) → AWS VPC
-                                      ├── Subnet Public  → Bastion Host (SSH Gateway)
-                                      └── Subnet Privé   → Nginx + PayFlow API (Docker)
-                                                                    ↓
-                                                              AWS S3 (Backups)
-                                                                    ↓
-                                                         Prometheus + Grafana + CloudWatch
+Internet → Cloudflare (DNS · WAF · HTTPS)
+              │  tunnel sortant (cloudflared)
+              ▼
+AWS VPC 10.0.0.0/16
+ ├── Subnet public 10.0.1.0/24  → Bastion (SSH) + NAT
+ └── Subnet privé  10.0.2.0/24  → cloudflared → Nginx → API PayFlow (Docker)
+                                        │
+                                        ▼
+                                   AWS S3 (backups chiffrés)
 ```
 
-### Plan d'adressage et segmentation
+### Deux flux distincts
 
-| Composant | Détail |
+| Flux | Chemin |
 |---|---|
-| VPC CIDR | `10.0.0.0/16` |
-| Subnet public | `10.0.1.0/24` - Bastion Host uniquement |
-| Subnet privé | `10.0.2.0/24` - Nginx + API applicative (deuxième instance EC2) |
-| Internet Gateway | attaché au VPC, route le trafic du subnet public vers Internet |
-| Table de routage privée | aucune route vers l'Internet Gateway - trafic interne uniquement |
+| Trafic client | Client → Cloudflare → tunnel → Nginx → API |
+| Administration | Admin → Bastion (SSH, IP /32) → serveur app (SSH) |
 
-### Security Groups (principe du moindre privilège réseau)
+Le serveur applicatif n'a aucune IP publique et aucune règle entrante
+depuis Internet : c'est `cloudflared` qui ouvre une connexion sortante
+vers Cloudflare. Le Bastion n'est utilisé que pour l'administration SSH.
 
-| Security Group | Règle entrante | Source | Justification |
-|---|---|---|---|
-| SG-Bastion | SSH (22) | IP publique de l'administrateur uniquement | Seul point d'accès SSH depuis Internet |
-| SG-App | HTTP (80) / HTTPS (443) / SSH (22) | SG-Bastion uniquement | Le serveur applicatif n'est jamais exposé directement à Internet |
+### Accès sortant
+Le subnet privé sort sur Internet via une instance NAT placée dans le
+subnet public (la NAT Gateway managée étant payante). Elle sert aux
+mises à jour système et à la connexion du tunnel.
 
-Cette organisation matérialise une logique **Zero Trust** : le seul chemin valide vers l'application est *Internet → Cloudflare → Bastion → Nginx → API* ; aucune règle ne permet d'atteindre directement le serveur applicatif depuis l'extérieur.
+### Security Groups
 
----
+| SG | Entrant | Source |
+|---|---|---|
+| sg-bastion | SSH 22 | IP admin /32 |
+| sg-app | SSH 22 | sg-bastion uniquement |
+
+Aucune règle HTTP/HTTPS entrante sur sg-app.
+
+## Limites
+- Environnement de démonstration, une seule instance par rôle :
+  pas de haute disponibilité.
+- Le NAT et le Bastion partagent une instance (compromis de coût).
+- Audit formalisé (AWS Config, Security Hub) non réalisé.
 
 ## Démarche de mise en œuvre
 
