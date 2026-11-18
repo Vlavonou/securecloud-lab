@@ -1,32 +1,24 @@
-# SecureCloud Lab - Infrastructure Cloud Production-Grade pour PayFlow
+# SecureCloud Lab : Infrastructure cloud sécurisée pour PayFlow
 
-> Projet Cloud Engineering / DevOps / Cloud Security - Portfolio technique
-> Stack : AWS · Terraform · Docker · Nginx · Prometheus/Grafana
-> Statut : infrastructure déployée et fonctionnelle
+Projet d'apprentissage Cloud / DevOps / Cloud Security
+Stack : AWS · Terraform · Docker · Nginx · Prometheus/Grafana
+**Statut : socle d'infrastructure déployé (phases 1 à 9). Exposition publique via Cloudflare non réalisée (voir « Ce qui n'a pas été fait »).**
 
----
+## À propos de ce projet
 
-## Résumé
+Il s'agit de mon **premier projet d'infrastructure cloud** monté en autonomie. L'objectif est d'apprendre en pratique les fondamentaux : segmentation réseau (VPC), accès administrateur contrôlé (bastion), durcissement Linux, conteneurisation, gestion des identités (IAM), sauvegarde, supervision et Infrastructure as Code.
 
-Ce projet simule le déploiement d'une infrastructure cloud de niveau production pour **PayFlow**, une startup SaaS fictive de paiement B2B en phase de lancement. L'objectif n'est pas de faire tourner une simple VM isolée, mais de reproduire ce qu'une équipe Cloud/DevOps déploierait réellement pour héberger une API sensible : un réseau isolé et segmenté, des serveurs Linux durcis, un reverse proxy sécurisé, une gestion des identités selon le principe du moindre privilège, un stockage objet chiffré et sauvegardé automatiquement, une stack de supervision, et une infrastructure entièrement décrite en code (Terraform).
+Le scénario est fictif : PayFlow, une startup SaaS de paiement B2B qui doit héberger une API de façon sécurisée. Les points non terminés ou perfectibles sont documentés honnêtement plus bas.
 
----
+## Objectifs
 
-## Contexte métier
-
-PayFlow est une startup SaaS de paiement B2B fictive, en phase de lancement. Le problème métier posé est le suivant : déployer une infrastructure cloud sécurisée, supervisée et hautement disponible pour héberger une API de paiement, avec traçabilité complète des accès, zéro exposition inutile des services internes, et une gestion fine des permissions.
-
-## Objectifs du projet
-
-- Concevoir un **réseau cloud isolé et segmenté** (VPC avec sous-réseaux public/privé), plutôt qu'une infrastructure "à plat" exposée directement sur Internet ;
-- Déployer des **serveurs Linux durcis**, accessibles uniquement via un point d'entrée unique et contrôlé (bastion) ;
-- Mettre en place une **gestion des identités et des accès (IAM)** structurée selon le principe du moindre privilège ;
-- Conteneuriser l'application et l'exposer via un **reverse proxy** appliquant des règles de sécurité (rate limiting, headers de sécurité) ;
-- Assurer la **sauvegarde automatisée** et chiffrée des données critiques ;
-- Mettre en place une **stack de supervision** capable de détecter des comportements anormaux (brute-force, charge CPU suspecte, service down) ;
-- Décrire l'ensemble de l'infrastructure en **Infrastructure as Code (Terraform)**, pour la rendre reproductible et documentée par le code lui-même.
-
----
+- Concevoir un réseau isolé et segmenté (VPC avec sous-réseaux public/privé)
+- Déployer des serveurs Linux durcis, administrés uniquement via un bastion
+- Structurer les accès selon le principe du moindre privilège (IAM)
+- Conteneuriser l'API et la placer derrière un reverse proxy (rate limiting, headers de sécurité)
+- Automatiser des sauvegardes chiffrées vers S3
+- Mettre en place une supervision (logs, métriques)
+- Décrire une partie de l'infrastructure en code (Terraform)
 
 ## Stack technique
 
@@ -35,154 +27,123 @@ PayFlow est une startup SaaS de paiement B2B fictive, en phase de lancement. Le 
 | Cloud | AWS (EC2, S3, IAM, CloudWatch, VPC) |
 | IaC | Terraform |
 | Conteneurs | Docker, Docker Compose |
-| Reverse Proxy | Nginx |
+| Reverse proxy | Nginx |
 | Monitoring | Prometheus, Grafana, Node Exporter, CloudWatch |
 | Sécurité | Fail2Ban, UFW, Lynis, AWS IAM |
 | Système | Ubuntu 22.04 LTS |
-| Périmètre/CDN | Cloudflare (DNS, WAF, proxy HTTP/HTTPS) |
 
----
-
-## Choix techniques et justification
-
-- **AWS Free Tier** a été retenu comme socle principal (VPC, EC2, S3, IAM, CloudWatch) pour sa maturité et sa représentativité d'un environnement cloud professionnel réel, tout en restant gratuit dans les limites du Free Tier.
-- **Un VPC dédié en `10.0.0.0/16`** a été préféré à l'usage du VPC par défaut AWS, afin de garder un contrôle total sur le plan d'adressage, la segmentation et le routage - condition nécessaire pour appliquer une architecture Zero Trust.
-- **Une architecture bastion + réseau privé** plutôt qu'un accès SSH direct sur le serveur applicatif : cela garantit qu'aucune machine hébergeant l'application n'est jamais directement exposée sur Internet, et centralise le point d'entrée à auditer.
-- **Terraform** a été choisi pour décrire l'infrastructure en tant que code plutôt que de la construire manuellement dans la console AWS : cela rend le déploiement reproductible en une commande et documente l'infrastructure elle-même - un différenciateur important entre un ingénieur cloud et un simple administrateur qui clique dans une console.
-- **Docker Compose** plutôt que Kubernetes : le projet ne visait pas l'orchestration à grande échelle, mais l'isolation propre des services (API + Nginx) avec un déploiement reproductible, suffisant à l'échelle d'un environnement de démonstration.
-- **Cloudflare** en frontal (DNS, WAF, proxy) pour filtrer le trafic avant même qu'il n'atteigne l'infrastructure AWS, ajoutant une couche de défense supplémentaire en périphérie.
-
-### Adaptation par rapport au plan initial - Oracle Cloud → AWS
-
-Le projet prévoyait initialement de répartir la charge entre AWS (réseau, bastion) et Oracle Cloud Always Free (serveur applicatif, pour bénéficier de ressources plus généreuses gratuitement). Suite à une contrainte liée à la carte bancaire requise pour l'inscription Oracle Cloud, le **serveur applicatif a finalement été déployé sur une deuxième instance EC2 (`t3.micro`) dans le sous-réseau privé AWS**, plutôt que sur Oracle Cloud. Les compétences techniques démontrées restent identiques ; seul le fournisseur cloud change pour cette machine.
-
----
-
-## Architecture
+## Architecture réalisée
 
 ```
-Internet → Cloudflare (DNS · WAF · HTTPS)
-              │  tunnel sortant (cloudflared)
-              ▼
+Admin (SSH, IP /32)
+     │
+     ▼
 AWS VPC 10.0.0.0/16
- ├── Subnet public 10.0.1.0/24  → Bastion (SSH) + NAT
- └── Subnet privé  10.0.2.0/24  → cloudflared → Nginx → API PayFlow (Docker)
+ ├── Subnet public 10.0.1.0/24 → Bastion Host (point d'entrée SSH unique)
+ └── Subnet privé  10.0.2.0/24 → Serveur applicatif (Nginx + API PayFlow en Docker)
                                         │
                                         ▼
-                                   AWS S3 (backups chiffrés)
+                                  AWS S3 (backups chiffrés)
+
+Supervision : Prometheus + Grafana + Node Exporter, CloudWatch (logs)
 ```
 
-### Deux flux distincts
+### Plan d'adressage
 
-| Flux | Chemin |
+| Composant | Détail |
 |---|---|
-| Trafic client | Client → Cloudflare → tunnel → Nginx → API |
-| Administration | Admin → Bastion (SSH, IP /32) → serveur app (SSH) |
-
-Le serveur applicatif n'a aucune IP publique et aucune règle entrante
-depuis Internet : c'est `cloudflared` qui ouvre une connexion sortante
-vers Cloudflare. Le Bastion n'est utilisé que pour l'administration SSH.
-
-### Accès sortant
-Le subnet privé sort sur Internet via une instance NAT placée dans le
-subnet public (la NAT Gateway managée étant payante). Elle sert aux
-mises à jour système et à la connexion du tunnel.
+| VPC | 10.0.0.0/16 |
+| Subnet public | 10.0.1.0/24, Bastion uniquement |
+| Subnet privé | 10.0.2.0/24, serveur applicatif (EC2 t3.micro) |
+| Internet Gateway | Rattachée au VPC, utilisée par le subnet public |
+| Route table privée | Aucune route vers l'Internet Gateway |
 
 ### Security Groups
 
 | SG | Entrant | Source |
 |---|---|---|
-| sg-bastion | SSH 22 | IP admin /32 |
-| sg-app | SSH 22 | sg-bastion uniquement |
+| sg-bastion | SSH 22 | IP publique de l'administrateur (/32) |
+| sg-app | SSH 22, HTTP 80 | sg-bastion uniquement |
 
-Aucune règle HTTP/HTTPS entrante sur sg-app.
+Le serveur applicatif n'a pas d'IP publique et n'est joignable depuis Internet par aucun chemin.
 
-## Limites
-- Environnement de démonstration, une seule instance par rôle :
-  pas de haute disponibilité.
-- Le NAT et le Bastion partagent une instance (compromis de coût).
-- Audit formalisé (AWS Config, Security Hub) non réalisé.
+### Administration
+
+```
+Admin → Bastion (SSH) → Serveur applicatif (SSH)
+```
+
+C'est le seul chemin d'accès au serveur applicatif.
+
+## Ce qui n'a pas été fait : exposition publique via Cloudflare
+
+L'architecture initiale prévoyait Cloudflare (DNS, WAF, proxy) devant l'application. **Cette partie n'a pas été mise en œuvre.** Seul un compte Cloudflare a été créé. Raisons :
+
+1. **Le serveur applicatif est volontairement injoignable depuis Internet.** Pour que Cloudflare lui transmette du trafic, il faut soit l'exposer (ce qui annule la segmentation), soit établir un **Cloudflare Tunnel** : une connexion *sortante* ouverte par le serveur vers Cloudflare.
+2. **Le tunnel exige un accès sortant depuis le subnet privé**, donc une passerelle NAT. La NAT Gateway AWS est payante (environ 30 USD/mois), incompatible avec la contrainte « 0 USD » du projet. Une instance NAT auto-gérée est possible, mais demande un travail supplémentaire (source/dest check, forwarding, règles iptables).
+3. **Utiliser Cloudflare en production demande un nom de domaine**, qui est un coût supplémentaire et n'était pas prévu.
+4. **Priorité à l'apprentissage des fondamentaux** : réseau, bastion, durcissement, IAM, IaC. J'ai choisi de les consolider avant d'aborder la publication de l'application.
+
+Une conception initiale erronée est aussi à signaler : le plan de départ décrivait le flux « Cloudflare → Bastion → Nginx », impossible, car un bastion est une passerelle SSH et non un proxy web. La bonne approche est de séparer les deux flux : trafic client via Cloudflare Tunnel, administration via le Bastion.
+
+### Conséquence
+
+L'API est **testée uniquement en local sur le serveur applicatif**. Elle n'est pas accessible publiquement, et les protections Cloudflare (WAF, anti-DDoS) ne sont pas actives.
 
 ## Démarche de mise en œuvre
 
-Le projet a été mené en neuf phases successives, chacune validée avant de passer à la suivante :
-
-1. **Préparation** : création des comptes cloud (AWS, Cloudflare), installation des outils locaux (AWS CLI, Terraform, Docker), génération d'une paire de clés SSH dédiée.
-2. **Infrastructure réseau** : création du VPC, des deux sous-réseaux (public/privé), de l'Internet Gateway, des tables de routage et des Security Groups.
-3. **Compute & Bastion** : déploiement du bastion (EC2 `t2.micro`, Ubuntu 22.04) et de l'instance applicative, premiers accès SSH, durcissement initial de la configuration SSH (désactivation du login root, authentification par clé uniquement, bannière légale) et mise en place de Fail2Ban contre le brute-force.
-4. **Stack applicative** : conteneurisation de l'API PayFlow (Node.js) et d'un reverse proxy Nginx via Docker Compose, avec limitation de débit (*rate limiting*) et ajout de headers de sécurité (`X-Frame-Options`, `X-Content-Type-Options`, etc.) ; l'API n'expose aucun port directement, tout le trafic transite par Nginx.
-5. **IAM & gestion des accès** : structuration des comptes selon le principe du moindre privilège - un compte root protégé et jamais utilisé au quotidien, des comptes séparés (administrateur, déploiement CI/CD, audit en lecture seule), et un rôle IAM attaché aux instances EC2 pour éviter tout stockage de clés d'accès sur les serveurs.
-6. **Stockage & sauvegarde** : création d'un bucket S3 avec versioning, blocage de tout accès public et chiffrement par défaut, puis mise en place d'un script de sauvegarde automatisé (logs, configuration Docker/Nginx) exécuté quotidiennement via cron.
-7. **Supervision** : déploiement d'une stack Prometheus + Grafana + Node Exporter pour la métrologie système et applicative, en complément de CloudWatch côté AWS pour la centralisation des logs (`auth.log`, `syslog`).
-8. **Durcissement système complet** : mises à jour automatiques, pare-feu UFW en politique restrictive par défaut, désactivation des services inutiles, paramètres kernel renforcés (sysctl : protection SYN flood, désactivation du source routing et de l'IP forwarding), permissions restreintes sur les fichiers sensibles, audit via Lynis.
-9. **Automatisation avec Terraform** : réécriture de l'ensemble de l'infrastructure réseau et compute en Infrastructure as Code (VPC, subnets, Security Groups, instance bastion), avec un état Terraform stocké dans S3 plutôt qu'en local.
-
----
-
-## Sécurité appliquée
-
-### Réseau - Zero Trust
-
-- Le serveur applicatif n'est **jamais accessible directement depuis Internet** ;
-- Un unique point d'entrée SSH (le bastion), restreint à l'IP publique de l'administrateur ;
-- Une table de routage privée sans route vers l'Internet Gateway pour le sous-réseau applicatif.
-
-### IAM
-
-- Compte root protégé, jamais utilisé au quotidien ;
-- Séparation des comptes selon leur usage : administrateur, déploiement (accès restreint à EC2 en lecture et à un bucket S3 précis), audit (lecture seule) ;
-- Rôle IAM attaché aux instances EC2 pour l'accès à S3, évitant tout stockage de clés d'accès sur les serveurs.
-
-### Durcissement Linux
-
-- SSH : authentification par clé uniquement, connexion root désactivée, nombre de tentatives limité, Fail2Ban actif ;
-- Pare-feu UFW avec politique par défaut restrictive (`deny incoming`), seuls les ports strictement nécessaires ouverts ;
-- Paramètres kernel renforcés (sysctl) contre le SYN flood, le source routing et les redirections ICMP ;
-- Audit système avec Lynis (indice de durcissement visé : > 70/100) ;
-- Permissions restreintes sur les fichiers de configuration sensibles (`sshd_config`, `authorized_keys`, `crontab`).
-
-### Application
-
-- Reverse proxy Nginx masquant la version du serveur, appliquant une limitation de débit (10 requêtes/seconde/IP) et des headers de sécurité standard ;
-- Bucket S3 sans accès public, chiffrement par défaut activé, versioning activé pour la résilience des sauvegardes.
-
----
+1. **Préparation** : comptes cloud (AWS, Cloudflare), outils locaux (AWS CLI, Terraform, Docker), paire de clés SSH dédiée.
+2. **Infrastructure réseau** : VPC, deux sous-réseaux, Internet Gateway, tables de routage, Security Groups.
+3. **Compute & Bastion** : bastion (EC2 t2.micro) et instance applicative, durcissement SSH (pas de root, clés uniquement, bannière légale), Fail2Ban.
+4. **Stack applicative** : API Node.js et Nginx via Docker Compose, rate limiting, headers de sécurité. L'API n'expose aucun port directement.
+5. **IAM** : root protégé, comptes séparés (administrateur, déploiement, audit), rôle IAM attaché aux EC2 pour éviter de stocker des clés.
+6. **Stockage & sauvegarde** : bucket S3 (versioning, accès public bloqué, chiffrement), sauvegarde quotidienne par cron.
+7. **Supervision** : Prometheus, Grafana, Node Exporter, et CloudWatch pour `auth.log` et `syslog`.
+8. **Durcissement Linux** : mises à jour automatiques, UFW restrictif, services inutiles désactivés, paramètres kernel (sysctl), permissions, audit Lynis.
+9. **Terraform** : réécriture du réseau (VPC, subnets, Security Groups) et du bastion, avec un état stocké dans S3.
 
 ## Statut du projet
 
 | Phase | Description | Statut |
 |---|---|---|
-| Phase 1 | Préparation & comptes cloud | ✅ Terminé |
-| Phase 2 | Infrastructure réseau (VPC) | ✅ Terminé |
-| Phase 3 | Compute & bastion host | ✅ Terminé |
-| Phase 4 | Stack applicative Docker | ✅ Terminé |
-| Phase 5 | IAM & gestion des accès | ✅ Terminé |
-| Phase 6 | Stockage & backup S3 | ✅ Terminé |
-| Phase 7 | Monitoring & logging | ✅ Terminé |
-| Phase 8 | Sécurité & hardening Linux | ✅ Terminé |
-| Phase 9 | Automatisation avec Terraform | ✅ Terminé |
+| 1 | Préparation & comptes cloud | ✅ Terminé |
+| 2 | Infrastructure réseau (VPC) | ✅ Terminé |
+| 3 | Compute & bastion host | ✅ Terminé |
+| 4 | Stack applicative Docker | ✅ Terminé |
+| 5 | IAM & gestion des accès | ✅ Terminé |
+| 6 | Stockage & backup S3 | ✅ Terminé |
+| 7 | Monitoring & logging | ✅ Terminé |
+| 8 | Sécurité & hardening Linux | ✅ Terminé |
+| 9 | Terraform | 🟡 Partiel (réseau + bastion ; serveur applicatif et routage à migrer) |
+| 10 | Accès sortant (NAT) & Cloudflare Tunnel | ⏳ Non réalisé |
+| 11 | Audit de sécurité (AWS Config, Security Hub) | ⏳ Non réalisé |
 
----
+## Sécurité appliquée
+
+**Réseau** : segmentation public/privé, serveur applicatif sans IP publique, point d'entrée SSH unique restreint à l'IP de l'administrateur, route table privée sans route vers l'Internet Gateway.
+
+**IAM** : root protégé et non utilisé au quotidien, comptes séparés par usage, rôle IAM attaché aux EC2 (aucune clé stockée sur les serveurs).
+
+**Linux** : SSH par clé uniquement, root désactivé, Fail2Ban, UFW en `deny incoming`, sysctl renforcé, permissions restreintes sur les fichiers sensibles, audit Lynis (objectif > 70/100).
+
+**Application** : Nginx masquant sa version, limitation à 10 requêtes/seconde/IP, headers de sécurité. Bucket S3 privé, chiffré et versionné.
 
 ## Leçons apprises
 
-- La séparation réseau via sous-réseaux public/privé s'est révélée plus robuste et plus lisible qu'une simple règle de Security Group pour matérialiser une frontière de confiance.
-- Les rôles IAM attachés aux instances EC2 évitent efficacement de stocker des identifiants d'accès sur les serveurs.
-- Un sous-réseau privé sans accès Internet complique l'installation de paquets sur les machines qu'il héberge, et nécessite une passerelle NAT (ou une solution alternative) pour les mises à jour système.
-- Terraform permet de documenter l'infrastructure comme du code reproductible en une seule commande, ce qui en fait à la fois un outil de déploiement et un outil de documentation vivante.
+- Les sous-réseaux public/privé matérialisent une frontière de confiance plus lisible qu'une simple règle de Security Group.
+- Un bastion est une passerelle d'administration SSH, pas un proxy web : le trafic des clients et celui de l'administrateur doivent suivre deux chemins séparés.
+- Un sous-réseau privé sans accès Internet complique l'installation de paquets et empêche un tunnel sortant : une solution NAT est nécessaire.
+- Les rôles IAM attachés aux EC2 évitent de stocker des identifiants sur les serveurs.
+- Terraform documente l'infrastructure par le code, mais il faut en couvrir tout le périmètre pour que la reproductibilité soit réelle.
 
----
+## Limites et perspectives
+
+- Environnement de démonstration (Free Tier, t2.micro/t3.micro), une seule instance par rôle : pas de haute disponibilité.
+- **Prochaines étapes** : instance NAT, Cloudflare Tunnel avec un domaine, test depuis l'extérieur, migration complète vers Terraform, audit AWS Config/Security Hub.
 
 ## Utilisation
 
-### Prérequis
-
-- Compte AWS
-- Compte Cloudflare
-- Terraform installé
-- AWS CLI configuré
-
-### Déploiement avec Terraform
+**Prérequis** : compte AWS, Terraform, AWS CLI configuré.
 
 ```bash
 cd terraform/
@@ -191,26 +152,19 @@ terraform plan
 terraform apply
 ```
 
-### Lancer l'application
-
+**Lancer l'application (sur le serveur applicatif)**
 ```bash
 cd docker/
 docker-compose up -d --build
 ```
 
-### Tester l'API
-
+**Tester l'API (en local sur le serveur)**
 ```bash
-# Health check
 curl http://localhost/health
-
-# Test paiement
 curl -X POST http://localhost/api/payment \
   -H 'Content-Type: application/json' \
   -d '{"amount":100,"currency":"EUR"}'
 ```
-
----
 
 ## Limites et perspectives
 
